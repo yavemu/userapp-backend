@@ -19,17 +19,33 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v0.1.5
+      # Paso crítico: Configuración de SSH con ssh-agent
+      - name: Add SSH Key
+        uses: webfactory/ssh-agent@v0.7.0
         with:
-          host: ${{ secrets.EC2_HOST }}  # Ej: ec2-1-2-3-4.compute-1.amazonaws.com
-          username: ubuntu
-          key: ${{ secrets.EC2_KEY }}    # Contenido completo del .pem
-          port: 22                       # Puerto SSH explícito
-          script: |
-            cd /home/ubuntu/userapp-backend 
-            pm2 stop userapp-backend || true 
-            git pull origin master 
-            npm ci 
-            npm run build 
-            pm2 restart userapp-backend
+          ssh-private-key: ${{ secrets.EC2_KEY }}
+
+      # Verificación de conexión SSH (debug)
+      - name: Test SSH Connection
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ${{ secrets.EC2_KEY }} ubuntu@${{ secrets.EC2_HOST }} "echo '✅ Conexión SSH exitosa'"
+
+      # Despliegue en EC2
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+            cd /home/ubuntu/userapp-backend
+            echo "🔄 Deteniendo aplicación..."
+            pm2 stop userapp-backend || true
+            echo "📥 Actualizando código..."
+            git pull origin master
+            echo "🧹 Limpiando dependencias..."
+            rm -rf node_modules
+            echo "📦 Instalando dependencias..."
+            npm ci
+            echo "🏗️ Compilando aplicación..."
+            npm run build
+            echo "🚀 Iniciando aplicación..."
+            pm2 start npm --name "userapp-backend" -- run start:prod
+            echo "✅ Despliegue completado!"
+          EOF
