@@ -22,8 +22,8 @@ import {
   ApiOkResponse,
 } from '@nestjs/swagger';
 
-@ApiTags('users')
-@Controller('users')
+@ApiTags('Usuario')
+@Controller('user')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
