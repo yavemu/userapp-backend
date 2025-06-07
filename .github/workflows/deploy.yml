@@ -28,12 +28,20 @@ jobs:
       # Verificación de conexión SSH (debug)
       - name: Test SSH Connection
         run: |
-          ssh -o StrictHostKeyChecking=no -i ${{ secrets.EC2_KEY }} ubuntu@${{ secrets.EC2_HOST }} "echo '✅ Conexión SSH exitosa'"
+          echo "$SSH_KEY" > tmp_key.pem
+          chmod 600 tmp_key.pem
+          ssh -o StrictHostKeyChecking=no -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} "echo '✅ Conexión SSH exitosa'"
+          rm -f tmp_key.pem
+        env:
+          SSH_KEY: ${{ secrets.EC2_KEY }}
 
       # Despliegue en EC2
       - name: Deploy to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          echo "$SSH_KEY" > tmp_key.pem
+          chmod 600 tmp_key.pem
+          scp -o StrictHostKeyChecking=no -i tmp_key.pem -r . ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/userapp-backend
+          ssh -o StrictHostKeyChecking=no -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
             cd /home/ubuntu/userapp-backend
             echo "🔄 Deteniendo aplicación..."
             pm2 stop userapp-backend || true
