@@ -22,12 +22,14 @@ jobs:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v0.1.5
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.EC2_HOST }}  # Ej: ec2-1-2-3-4.compute-1.amazonaws.com
           username: ubuntu
-          key: ${{ secrets.EC2_KEY }}
+          key: ${{ secrets.EC2_KEY }}    # Contenido completo del .pem
+          port: 22                       # Puerto SSH explícito
           script: |
             cd /home/ubuntu/userapp-backend 
+            pm2 stop userapp-backend || true 
             git pull origin master 
             npm ci 
             npm run build 
-            pm2 restart userapp-backend || pm2 start ecosystem.config.js
+            pm2 restart userapp-backend
