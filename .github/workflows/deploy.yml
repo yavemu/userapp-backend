@@ -11,46 +11,34 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - name: Install dependencies
+      - name: Install dependencies (local)
         run: npm ci
 
-      - name: Build application
+      - name: Build application (local)
         run: npm run build
 
-      # Paso crítico: Configuración de SSH con ssh-agent
-      - name: Add SSH Key
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.EC2_KEY }}
-
-      # Verificación de conexión SSH (debug)
-      - name: Test SSH Connection
-        run: |
-          echo "$SSH_KEY" > tmp_key.pem
-          chmod 600 tmp_key.pem
-          ssh -o StrictHostKeyChecking=no -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} "echo '✅ Conexión SSH exitosa'"
-          rm -f tmp_key.pem
-        env:
-          SSH_KEY: ${{ secrets.EC2_KEY }}
-
-      # Despliegue en EC2
       - name: Deploy to EC2
         run: |
           echo "$SSH_KEY" > tmp_key.pem
           chmod 600 tmp_key.pem
-          
-          # Borra toda la carpeta (incluyendo .git)
-          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST}} "rm -rf /home/ubuntu/userapp-backend"
-          
-          # Clona desde cero
-          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST}} "
-            git clone https://github.com/yavemu/userapp-backend.git /home/ubuntu/userapp-backend
+
+          # Sincroniza cambios EXCLUYENDO archivos sensibles
+          rsync -avz -e "ssh -i tmp_key.pem" \
+            --exclude='.env' \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            ./ ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/userapp-backend/
+
+          # Ejecuta comandos remotos
+          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
             cd /home/ubuntu/userapp-backend
-            npm ci
+            npm ci --production
             npm run build
-            pm2 start npm --name "userapp-backend" -- run start:prod
-          "
-          
+            pm2 restart userapp-backend || pm2 start npm --name "userapp-backend" -- run start:prod
+          EOF
+
           rm -f tmp_key.pem
+        env:
+          SSH_KEY: ${{ secrets.EC2_KEY }}
