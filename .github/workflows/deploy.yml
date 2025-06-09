@@ -7,51 +7,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
+      
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
-
+          node-version: '20'
+          
       - name: Install dependencies
         run: npm ci
-
+        
       - name: Build application
         run: npm run build
-
-      # Paso crítico: Configuración de SSH con ssh-agent
+        
       - name: Add SSH Key
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.EC2_KEY }}
-
-      # Verificación de conexión SSH (debug)
-      - name: Test SSH Connection
+          
+      - name: Create deployment package
         run: |
-          echo "$SSH_KEY" > tmp_key.pem
-          chmod 600 tmp_key.pem
-          ssh -o StrictHostKeyChecking=no -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} "echo '✅ Conexión SSH exitosa'"
-          rm -f tmp_key.pem
-        env:
-          SSH_KEY: ${{ secrets.EC2_KEY }}
-
-      # Despliegue en EC2
+          tar -czf deployment.tar.gz dist/ package*.json
+          
       - name: Deploy to EC2
         run: |
           echo "$SSH_KEY" > tmp_key.pem
           chmod 600 tmp_key.pem
           
-          # Borra toda la carpeta (incluyendo .git)
-          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST}} "rm -rf /home/ubuntu/userapp-backend"
+          # Crear timestamp para deployment único
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           
-          # Ejecuta comandos remotos
-          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          # Transferir archivos a carpeta temporal
+          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} "mkdir -p /home/ubuntu/deployments/$TIMESTAMP"
+          scp -i tmp_key.pem deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/deployments/$TIMESTAMP/
+          
+          # Despliegue con zero-downtime
+          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} << EOF
+            cd /home/ubuntu/deployments/$TIMESTAMP
+            
+            # Extraer archivos
+            tar -xzf deployment.tar.gz
+            
+            # Instalar dependencias
+            npm ci --production --silent
+            
+            # Detener aplicación actual
+            pm2 stop userapp-backend || true
+            
+            # Actualizar symlink a la nueva versión
+            rm -f /home/ubuntu/userapp-backend
+            ln -sf /home/ubuntu/deployments/$TIMESTAMP /home/ubuntu/userapp-backend
+            
+            # Iniciar aplicación
             cd /home/ubuntu/userapp-backend
-            npm ci --production
-            npm run build
-            pm2 restart userapp-backend || pm2 start npm --name "userapp-backend" -- run start:prod
+            pm2 start npm --name "userapp-backend" -- run start:prod || pm2 restart userapp-backend
+            
+            # Limpiar deployments antiguos (mantener últimos 3)
+            cd /home/ubuntu/deployments
+            ls -t | tail -n +4 | xargs -r rm -rf
+            
+            pm2 status userapp-backend
           EOF
-
+          
           rm -f tmp_key.pem
         env:
           SSH_KEY: ${{ secrets.EC2_KEY }}
