@@ -38,10 +38,12 @@ jobs:
           # Ejecuta comandos remotos (el proyecto ya existe en EC2)
           ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
             cd /home/ubuntu/userapp-backend
+            pm2 stop userapp-backend
+            pm2 delete userapp-backend
             git pull origin master
             npm ci --production
             npm run build
-            pm2 restart userapp-backend || pm2 start npm --name "userapp-backend" -- run start:prod
+            pm2 start npm --name "userapp-backend" -- run start:prod
           EOF
           rm -f tmp_key.pem
         env:
