@@ -40,20 +40,17 @@ jobs:
         run: |
           echo "$SSH_KEY" > tmp_key.pem
           chmod 600 tmp_key.pem
-          scp -o StrictHostKeyChecking=no -i tmp_key.pem -r . ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/userapp-backend
-          ssh -o StrictHostKeyChecking=no -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          
+          # Borra toda la carpeta (incluyendo .git)
+          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST}} "rm -rf /home/ubuntu/userapp-backend"
+          
+          # Clona desde cero
+          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST}} "
+            git clone https://github.com/tu-usuario/tu-repo.git /home/ubuntu/userapp-backend
             cd /home/ubuntu/userapp-backend
-            echo "🔄 Deteniendo aplicación..."
-            pm2 stop userapp-backend || true
-            echo "📥 Actualizando código..."
-            git pull origin master
-            echo "🧹 Limpiando dependencias..."
-            rm -rf node_modules
-            echo "📦 Instalando dependencias..."
             npm ci
-            echo "🏗️ Compilando aplicación..."
             npm run build
-            echo "🚀 Iniciando aplicación..."
             pm2 start npm --name "userapp-backend" -- run start:prod
-            echo "✅ Despliegue completado!"
-          EOF
+          "
+          
+          rm -f tmp_key.pem
