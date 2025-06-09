@@ -11,26 +11,39 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '18'
 
-      - name: Install dependencies (local)
+      - name: Install dependencies
         run: npm ci
 
-      - name: Build application (local)
+      - name: Build application
         run: npm run build
 
+      # Paso crítico: Configuración de SSH con ssh-agent
+      - name: Add SSH Key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_KEY }}
+
+      # Verificación de conexión SSH (debug)
+      - name: Test SSH Connection
+        run: |
+          echo "$SSH_KEY" > tmp_key.pem
+          chmod 600 tmp_key.pem
+          ssh -o StrictHostKeyChecking=no -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} "echo '✅ Conexión SSH exitosa'"
+          rm -f tmp_key.pem
+        env:
+          SSH_KEY: ${{ secrets.EC2_KEY }}
+
+      # Despliegue en EC2
       - name: Deploy to EC2
         run: |
           echo "$SSH_KEY" > tmp_key.pem
           chmod 600 tmp_key.pem
-
-          # Sincroniza cambios EXCLUYENDO archivos sensibles
-          rsync -avz -e "ssh -i tmp_key.pem" \
-            --exclude='.env' \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            ./ ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/userapp-backend/
-
+          
+          # Borra toda la carpeta (incluyendo .git)
+          ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST}} "rm -rf /home/ubuntu/userapp-backend"
+          
           # Ejecuta comandos remotos
           ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
             cd /home/ubuntu/userapp-backend
