@@ -46,7 +46,7 @@ jobs:
           
           # Clona desde cero
           ssh -i tmp_key.pem ubuntu@${{ secrets.EC2_HOST}} "
-            git clone https://github.com/tu-usuario/tu-repo.git /home/ubuntu/userapp-backend
+            git clone https://github.com/yavemu/userapp-backend.git /home/ubuntu/userapp-backend
             cd /home/ubuntu/userapp-backend
             npm ci
             npm run build
